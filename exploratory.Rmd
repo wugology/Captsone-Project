@@ -1,0 +1,241 @@
+---
+title: "SwiftKey Corpus Exploratory Analysis"
+author: "Onna Nelson"
+date: "March 2015"
+output: html_document
+---
+
+###Introduction
+The SwiftKey Corpus consists of news articles, blogs, and tweets in English, Russian, Dutch, and Finnish. The purpose of these corpora is to provide natural language data to aid in text prediction. This exploratory analysis will briefly examine these three genres of writing in English. 
+
+Preliminary exploratory analysis suggests that the SwiftKey corpus follows patterns predicted by Zipf's Law which are common to natural language data. Overall, about 45% of words occur only once in the data, and nearly 4% of the words are the word *the*.  
+
+###Loading the data
+Since Finnish and Russian use non-ASCII characters, we will need the unicode pacakge to handle this.
+
+```{r}
+library(Unicode)
+```
+
+Next, we set our working directories and load all the data. This is demonstrated for the English corpora, but can be preformed on the other languages as well.
+```{r, cache=TRUE, warning=FALSE}
+setwd("~/Desktop/SwiftKey Corpus/en_US")
+en.tweets <- readLines("en_US.twitter.txt")
+en.news <-  readLines("en_US.news.txt")
+en.blogs <-  readLines("en_US.blogs.txt")
+```
+
+###Cleaning the data
+My prediction algorithm will focus only on words, ignoring case, punctuation, and numbers. Although predicting capitalization, numbers, and punctuation (including emjoi), is interesting, this level of complexity will be reserved for later versions of the prediction algorithm. Therefore, it is necessary to get rid of numbers, extraneous spaces, and normalize the data to lowercase. This process will be demonstrated on the English blog data; however, the same process will be preformed on the twitter and news corpora as well. 
+
+```{r, cache=TRUE}
+en.blogs2 <- gsub("\\d","",en.blogs) #get rid of numbers
+en.blogs3 <- gsub("\\W", " ", en.blogs2) #get rid of punctuation
+en.blogs4 <- gsub("\\s+", " ", en.blogs3) #replace 2+ spaces with one
+en.blogs5 <- tolower(en.blogs4) #make everything lowercase
+```
+Getting rid of punctuation will cause contractions like *should've* to become separate single words, as in *should* and *ve*. 
+
+###Making unigram frequency tables
+A unigram is a single word. Again, this process will be demonstrated on the English blog data; however, the same process was preformed on all twelve corpora. 
+```{r, cache=TRUE}
+en.blogs6 <-strsplit(en.blogs5, "\\s") #split on spaces
+en.blogs7 <-unlist(en.blogs6) #unlist the vector
+en.blogs.freq <-table(en.blogs7) #makes a frequency list of every word
+sorted.en.blogs.freq<-sort(en.blogs.freq, decreasing=T) #sort the frequency list 
+write.table(sorted.en.blogs.freq, "enBlogFreqs.csv",sep=",") #make a CSV file with the frequency list
+```
+
+Now that the unigram frequency data have been saved as a .csv file, we can return to this at a later point, without loading or manipulating the original data again. 
+
+```{r, cache=TRUE,warning=FALSE}
+setwd("~/Desktop/SwiftKey Corpus/en_US")
+en.blog.unigram <- read.csv("enBlogFreqs.csv",col.names=c("word","blogFreq"))
+en.news.unigram <- read.csv("enNewsFreqs.csv",col.names=c("word","newsFreq"))
+en.tweet.unigram <- read.csv("enTweetFreqs.csv",col.names=c("word","tweetFreq"))
+```
+
+It is important to note that I named the words column as a generic "word", but the frequency column has a unique name for each corpus. This will be important later on when merging the data.
+
+###Making n-gram frequency tables
+When predicting text, word order matters. We expect a native English speaker to frequently say *the red house* and almost never say *house red the*. Moreover, certain combinations of words (such as *the White House*) might be more common than others (such as *the red house*). An n-gram is a series of N number of words. The functions `ngram2` and `ngram3` will help produce these frequency lists.
+
+```{r cache=TRUE}
+ngram2 <- function(corpus){
+   ngrams <- vector()
+   for(i in 1:length(corpus)){ #for each line
+      temp <- unlist(strsplit(corpus[i], "\\W"))
+      cat(i/length(corpus)*100, "%\n") #give progress
+      for(j in 0:length(temp)){ #start at zero to include line beginning 
+         ngram <- c(temp[j],temp[j+1])
+         ngrams <- append(ngram, ngrams)
+         }
+      }
+   return(table(ngrams))
+   }
+
+ngram3 <- function(corpus){
+   ngrams <- vector()
+   for(i in 1:length(corpus)){ #for each line
+      temp <- unlist(strsplit(corpus[i], "\\W"))
+      cat(i/length(corpus)*100, "%\n") #give progress
+      for(j in 0:length(temp)){ #start at zero to include line beginning 
+         ngram <- c(temp[j],temp[j+1],temp[j+2])
+         ngrams <- append(ngram, ngrams)
+         }
+      }
+   return(table(ngrams))
+   }
+
+ngram4 <- function(corpus){
+   ngrams <- vector()
+   for(i in 1:length(corpus)){ #for each line
+      temp <- unlist(strsplit(corpus[i], "\\W"))
+      cat(i/length(corpus)*100, "%\n") #give progress
+      for(j in 0:length(temp)){ #start at zero to include line beginning 
+         ngram <- c(temp[j],temp[j+1],temp[j+2],temp[j+3])
+         ngrams <- append(ngram, ngrams)
+         }
+      }
+   return(table(ngrams))
+   }
+```
+
+This process was highly inefficent. 
+
+```{r,cache=TRUE,include=FALSE}
+#blog2gramFreq <- ngram2(en.blogs5)
+#blog3gramFreq <- ngram3(en.blogs5)
+#write.table(blog2gramFreq, "enBlog2gramFreqs.csv",sep=",")
+#write.table(blog3gramFreq, "enBlog3gramFreqs.csv",sep=",")
+```
+
+###Exploring the Zipfian distribution
+The number of rows tells us how many unique words are in the corpus (word **types**), while the sum of the freq column tells us how many total words are in the corpus (word **tokens**). 
+
+```{r, cache=TRUE}
+blogTypes <- nrow(en.blog.unigram); blogTypes
+blogTokens <- sum(en.blog.unigram$blogFreq); blogTokens
+```
+
+In the English blogs corpus, there are 256,889 unique word types, and a total of 37,975,178 word tokens. However, we cannot expect the average number of tokens for each word to be `blogTokens/blogTypes`. This is because language data tends to follow a **skewed distribution**. 
+
+According to Zipf's Law (<http://en.wikipedia.org/wiki/Zipf%27s_law>), language data follows a logarithmic pattern. In other words, the most frequeny word (or n-gram) can be expected to be about twice as frequent as the second most frequent word (or n-gram), which in turn is twice as frequent as the third most frequent word (or n-gram), and so on. This means there are a small set of very highly frequent words and a large set of extremely infrequent words.
+
+####Common words
+Moreover, the highly frequent words also overwhelmingly tend to be **function words** (pronouns, articles, prepositions, auxiliary verbs, and conjunctions) rather than **content words** (nouns, verbs, adverbs, and adjectives). Let's look at the 10 most frequent words in the blogs corpus:
+
+```{r, cache=TRUE}
+head(en.blog.unigram,10)
+en.blog.unigram$blogFreq[1]/blogTokens * 100
+sum(en.blog.unigram$blogFreq[1:10])/blogTokens * 100
+```
+
+As expected, the 10 most frequent words in the blogs corpus are all function words: articles such as *the* and *a*, conjunctions such as *and*, prepositions such as *to*, *of*, *in*, pronouns such as *i*, *it*, and *that*, and the copula verb *is*. Moreover, these ten words make up 22.9% of all the tokens! Over a fifth of the blog corpus can be accounted for by just these ten words.
+
+Similar results were found in the other corpora. Among tweets, the most common words are *the*, *i*, *to*, *a*, *you*, *and*, *for*, *it*, *in*, and *of*, which account for 16.9% of the twitter corpus. In the news corpus, the most common words are *the*, *to*, *a*, *and*, *of*, *in*, *s*, *that*, *for*, and *it*, which account for 21.8% of the news corpus.
+
+It is important to note the differences between the three corpora. Tweets, which tend to be more social, contain the pronouns *I* and *you* more frequently than the other corpora. Words such as *of* and *that*, which are common in relative clauses and other syntactically complex phrases, are more common in the news and blogs corpora. The distributions of these words also differ from one corpus to the next. Therefore, it is important to consider context (news, blog, or tweet) when predicting text.
+
+####Unommon words
+The least frequent words, which only occur once in a corpus, are known as hapaxes (<http://en.wikipedia.org/wiki/Hapax_legomenon>), and may make up as much as half of all the words in the corpus. For example, in a corpus of 1,000,000 unique words, up to 500,000 may be hapaxes. 
+
+```{r, cache=TRUE}
+hapaxes <- en.blog.unigram$blogFreq==1; table(hapaxes)
+```
+
+As we can see, 118,979 (46%) of the tokens in the English blogs corpus only occur once. This, again, is expected based on predictions from Zipf's Law. Similar rates are found in the twitter corpus (56% hapaxes) and news corpus (39% hapaxes).
+
+####Visualizing the Zipfian distribution
+One popular method of visualizing word frequency data is through a word cloud, which can be done in R using `library(wordcloud)`. This is demonstrated below for all three corpora:
+
+```{r,cache=TRUE,warning=FALSE, echo=FALSE}
+library(RColorBrewer)
+library(wordcloud)
+pal2 <- brewer.pal(8,"Dark2")
+par(mfrow=c(1,3))
+wordcloud(en.blog.unigram$word[1:50],en.blog.unigram$blogFreq[1:50], 
+          scale=c(4,2),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+wordcloud(en.tweet.unigram$word[1:50],en.tweet.unigram$tweetFreq[1:50], 
+          scale=c(4,2),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+wordcloud(en.news.unigram$word[1:50],en.news.unigram$newsFreq[1:50], 
+          scale=c(4,2),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+```
+
+From left to right: blogs, tweets, and news. While visually appealing, these plots do not demonstrate any statistical information. The Zipfian distribution is better demonstrated by plotting the (logged) frequencies of each word against their ranked orders:
+
+```{r,cache=TRUE, echo=FALSE,warning=FALSE}
+par(mfrow=c(1,1))
+plot(log2(en.blog.unigram$blogFreq[1:50]), type="n", xlab="Frequency Rank", ylab="Frequency (logged)", main="50 Most Frequent Words in the English Blogs Corpus")
+text(jitter(log2(en.blog.unigram$blogFreq[1:50]), factor=1, amount=.2), labels = en.blog.unigram$word[1:50], col = "blue", cex=1.1)
+
+plot(log2(en.tweet.unigram$tweetFreq[1:50]), type="n", xlab="Frequency Rank", ylab="Frequency (logged)", main="50 Most Frequent Words in the English Twitter Corpus")
+text(jitter(log2(en.tweet.unigram$tweetFreq[1:50]), factor=1, amount=.2), labels = en.tweet.unigram$word[1:50], col = "blue", cex=1.1)
+
+plot(log2(en.news.unigram$newsFreq[1:50]), type="n", xlab="Frequency Rank", ylab="Frequency (logged)", main="50 Most Frequent Words in the English News Corpus")
+text(jitter(log2(en.news.unigram$newsFreq[1:50]), factor=1, amount=.2), labels = en.news.unigram$word[1:50], col = "blue", cex=1.1)
+
+```
+
+Here we can see the logarithmic curve predicted by Zipf's Law. Again, we can see differences from one corpus to the next. While *the* is the most common word in all three, social words like *thanks* and question words like *what* are more common in the twitter corpus, due to its more interactive nature. Third person pronouns like *they* are more common in the news and blogs corpora, due to the fact that these may be more reportative. 
+
+###Exploring N-gram frequencies
+First, we'll load our n-grams:
+```{r, cache=TRUE,warning=FALSE}
+#blog2gram <- read.csv("enBlog2gramFreqs.csv",col.names=c("word","blog2gramFreq"))
+#blog2gram <- blog2gram[ order(-blog2gramFreq), ]
+#head(blog2gram)
+```
+
+###Plans for predicition
+Unigram frequencies can help overall prediction. For example, given no other information, a highly frequent word such as *the* is much more likely to occur than an infrequent word like *botches*. However, raw frequencies alone will not be helpful in prediction. Therefore, the **relative frequencies** of each word will be used as factors in a machine learning predictive algorithm.
+
+The most basic type of prediction would only use the relative frequency of unigrams. To add more complexity, and predictive power, we can also add 2-grams, 3-grams, or other n-grams as factors. To add even more predictive power, we can consider the context. For example, someone writing a tweet may be more likely to type *you* than someone writing a news article. 
+
+####Merging the data
+Although context is important, having an overall idea of word frequencies is important as well. We can merge the data into one data set using the `merge()` function from the `entropy` package:
+
+```{r,cache=TRUE}
+English <- merge(en.tweet.unigram, merge(en.blog.unigram, en.news.unigram,all=T), all=T)
+English[is.na(English)]=0 #makes NAs zero (common with hapaxes)
+English$totalFreq <- English$tweetFreq+English$blogFreq+English$newsFreq
+English <- English[ order(-English$totalFreq), ]
+englishTypes <- nrow(English); englishTypes
+englishTokens <- sum(English$totalFreq); englishTokens
+head(English, 10)
+```
+There are over half a million unique word types and over 100 million word tokens in this corpus! 
+
+####Calculating relative frequencies
+Raw numbers do not give an accurate picture of the data. Relative frequencies are more like probabilities, and can be used in a prediction model.
+```{r, cache=TRUE}
+tweetTokens <- sum(English$tweetFreq)
+blogTokens <- sum(English$blogFreq)
+newsTokens <- sum(English$newsFreq)
+
+English$tweetRelFreq <- English$tweetFreq/tweetTokens
+English$blogRelFreq <- English$blogFreq/blogTokens
+English$newsRelFreq <- English$newsFreq/newsTokens
+English$totalRelFreq <- English$totalFreq/englishTokens
+
+head(English)
+```
+
+###Future work 
+Future work will calculate relative frequencies for all the n-gram tables. All the n-gram frequencies will be merged with the unigram frequncies, such that any ngram or unigram contained in a 4-gram will appear as a single row. For example (fake data):
+
+```{r,cache=TRUE,echo=FALSE}
+colname<- c("4gram","freq","3gram1","freq","3gram2","freq","2gram1","freq","2gram2","freq","2gram3","freq","1gram1","freq","1gram2","freq","1gram3","freq","1gram4","freq")
+data <- c("A B C D", 0.01,"A B C", 0.01,"B C D",0.01,"A B", 0.01,"B C",0.01, "C D", 0.01, "A",0.01,"B",0.01,"C",0.01,"D",0.01)
+example <- t(data.frame(colname,data))
+```
+```{r,cache=TRUE,warning=FALSE}
+example
+```
+
+Hapaxes or other extremely infrequent combinations may be discarded, as they take up nearly half the data set and provide relatively little predictive power at a large memory cost. 
+
+The ultimate goal of the prediction algorithm will be to predict "D" given the sequence "A B C" and using the associated frequency probabilities.
