@@ -6,9 +6,9 @@ output: html_document
 ---
 
 ###Introduction
-The SwiftKey Corpus consists of news articles, blogs, and tweets in English, Russian, Dutch, and Finnish. The purpose of these corpora is to provide natural language data to aid in text prediction. This exploratory analysis will briefly examine these three genres of writing in English. 
+The SwiftKey Corpus consists of news articles, blogs, and tweets in English, Russian, Dutch, and Finnish. The purpose of these corpora is to provide natural language data to aid in text prediction. This exploratory analysis will briefly examine these three genres of writing in English, but also explore some of the Dutch and Finnish data as well. 
 
-Preliminary exploratory analysis suggests that the SwiftKey corpus follows patterns predicted by Zipf's Law which are common to natural language data. Overall, about 45% of words occur only once in the data, and nearly 4% of the words are the word *the*.  
+Preliminary exploratory analysis suggests that the SwiftKey corpus follows patterns predicted by Zipf's Law which are common to natural language data. Overall, about 45% of words occur only once in the data, and nearly 4% of the English words are the word *the*.  
 
 ###Loading the data
 Since Finnish and Russian use non-ASCII characters, we will need the unicode pacakge to handle this.
@@ -26,7 +26,7 @@ en.blogs <-  readLines("en_US.blogs.txt")
 ```
 
 ###Cleaning the data
-My prediction algorithm will focus only on words, ignoring case, punctuation, and numbers. Although predicting capitalization, numbers, and punctuation (including emjoi), is interesting, this level of complexity will be reserved for later versions of the prediction algorithm. Therefore, it is necessary to get rid of numbers, extraneous spaces, and normalize the data to lowercase. This process will be demonstrated on the English blog data; however, the same process will be preformed on the twitter and news corpora as well. 
+My prediction algorithm will focus only on words, ignoring case, punctuation, and numbers. Although predicting capitalization, numbers, and punctuation (including emjoi), is interesting, this level of complexity will be reserved for later versions of the prediction algorithm. Therefore, it is necessary to get rid of numbers, extraneous spaces, and normalize the data to lowercase. This process will be demonstrated on the English blog data; however, the same process will be preformed on the twitter and news corpora as well. Getting rid of punctuation will cause contractions like *should've* to become separate single words, as in *should* and *ve*. 
 
 ```{r, cache=TRUE}
 en.blogs2 <- gsub("\\d","",en.blogs) #get rid of numbers
@@ -34,21 +34,29 @@ en.blogs3 <- gsub("\\W", " ", en.blogs2) #get rid of punctuation
 en.blogs4 <- gsub("\\s+", " ", en.blogs3) #replace 2+ spaces with one
 en.blogs5 <- tolower(en.blogs4) #make everything lowercase
 ```
-Getting rid of punctuation will cause contractions like *should've* to become separate single words, as in *should* and *ve*. 
+
+In the interest of memory management, we'll save this cleaned data set and clear the R console's memory:
+
+```{r, cache=TRUE}
+saveRDS(en.blogs5, file="cleanEngBlogs.txt")
+rm(list=ls(all=TRUE)) # clear data
+clean.en.blogs <- readRDS("cleanEngBlogs.txt")
+```
 
 ###Making unigram frequency tables
 A unigram is a single word. Again, this process will be demonstrated on the English blog data; however, the same process was preformed on all twelve corpora. 
 ```{r, cache=TRUE}
-en.blogs6 <-strsplit(en.blogs5, "\\s") #split on spaces
+en.blogs6 <-strsplit(clean.en.blogs, "\\s") #split on spaces
 en.blogs7 <-unlist(en.blogs6) #unlist the vector
 en.blogs.freq <-table(en.blogs7) #makes a frequency list of every word
 sorted.en.blogs.freq<-sort(en.blogs.freq, decreasing=T) #sort the frequency list 
 write.table(sorted.en.blogs.freq, "enBlogFreqs.csv",sep=",") #make a CSV file with the frequency list
 ```
 
-Now that the unigram frequency data have been saved as a .csv file, we can return to this at a later point, without loading or manipulating the original data again. 
+Now that the unigram frequency data have been saved as a .csv file, we can return to this at a later point, without loading or manipulating the original data again. We can also clear the data and start with a fresh console.
 
 ```{r, cache=TRUE,warning=FALSE}
+rm(list=ls(all=TRUE)) # clear data
 setwd("~/Desktop/SwiftKey Corpus/en_US")
 en.blog.unigram <- read.csv("enBlogFreqs.csv",col.names=c("word","blogFreq"))
 en.news.unigram <- read.csv("enNewsFreqs.csv",col.names=c("word","newsFreq"))
@@ -104,8 +112,9 @@ ngram4 <- function(corpus){
 This process was highly inefficent. 
 
 ```{r,cache=TRUE,include=FALSE}
-#blog2gramFreq <- ngram2(en.blogs5)
-#blog3gramFreq <- ngram3(en.blogs5)
+clean.en.blogs <- readRDS("cleanEngBlogs.txt")
+#blog2gramFreq <- ngram2(clean.en.blogs)
+#blog3gramFreq <- ngram3(clean.en.blogs)
 #write.table(blog2gramFreq, "enBlog2gramFreqs.csv",sep=",")
 #write.table(blog3gramFreq, "enBlog3gramFreqs.csv",sep=",")
 ```
@@ -236,6 +245,68 @@ example <- t(data.frame(colname,data))
 example
 ```
 
-Hapaxes or other extremely infrequent combinations may be discarded, as they take up nearly half the data set and provide relatively little predictive power at a large memory cost. 
+Hapaxes or extremely infrequent ngrams may be discarded, as they take up nearly half the data set and provide relatively little predictive power at a large memory cost. 
 
 The ultimate goal of the prediction algorithm will be to predict "D" given the sequence "A B C" and using the associated frequency probabilities.
+
+Test cases will be generated. 
+
+###Bonus Word Clouds
+Just for fun, I used the same process as above to make word clouds for Dutch and Finnish.
+
+####Dutch
+```{r,cache=TRUE,warning=FALSE, echo=FALSE}
+
+setwd("~/Desktop/SwiftKey Corpus/de_DE")
+de.tweet.unigram <- read.csv("deTweetFreqs.csv", col.names=c("word","tweetFreq"))
+de.blog.unigram <- read.csv("deblogFreqs.csv", col.names=c("word","blogFreq"))
+de.news.unigram <- read.csv("deNewsFreqs.csv",col.names=c("word","newsFreq"))
+library(Unicode)
+library(RColorBrewer)
+library(wordcloud)
+pal2 <- brewer.pal(8,"Dark2")
+par(mfrow=c(1,3))
+wordcloud(de.blog.unigram$word[1:50],de.blog.unigram$blogFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif", "bold"))
+wordcloud(de.tweet.unigram$word[1:50],de.tweet.unigram$tweetFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+wordcloud(de.news.unigram$word[1:50],de.news.unigram$newsFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+```
+
+From left to right: blogs, tweets, and news.
+
+Here we see some of the same trends from English: short function words like *die* and *der* "the", *ich* "I", and *ist* "is" stand out as the most common. 
+
+####Finnish
+```{r,cache=TRUE,warning=FALSE, echo=FALSE}
+
+setwd("~/Desktop/SwiftKey Corpus/fi_FI")
+fi.tweet.unigram <- read.csv("fiTweetFreqs.csv", col.names=c("word","tweetFreq"))
+fi.blog.unigram <- read.csv("fiblogFreqs.csv", col.names=c("word","blogFreq"))
+fi.news.unigram <- read.csv("fiNewsFreqs.csv",col.names=c("word","newsFreq"))
+library(Unicode)
+library(RColorBrewer)
+library(wordcloud)
+pal2 <- brewer.pal(8,"Dark2")
+par(mfrow=c(1,3))
+wordcloud(fi.blog.unigram$word[1:50],fi.blog.unigram$blogFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif", "bold"))
+wordcloud(fi.tweet.unigram$word[1:50],fi.tweet.unigram$tweetFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+wordcloud(fi.news.unigram$word[1:50],fi.news.unigram$newsFreq[1:50], 
+          scale=c(3.5,1.25),min.freq=2,max.words=Inf, random.order=T, 
+          rot.per=.25, colors=pal2, random.color=T, vfont=c("sans serif","bold"))
+```
+
+From left to right: blogs, tweets, and news.
+
+Once again, we see small function words like *ja* "and", *on* "there is", and *ei* "not" which stand out as the most common in Finnish.
+
+####Russian
+Getting Cyrllic fonts to work with `wordcloud()` would also be awesome for the Russian data! No luck yet; still exploring font packages!
